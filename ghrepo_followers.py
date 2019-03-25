@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from github import Github
+import pandas as pd
 import requests
 import csv
 import sys
@@ -156,9 +157,18 @@ if __name__ == '__main__':
 		sys.exit(1)
 	ghrepo = GithubRepo(sys.argv[1], sys.argv[2])
 	starrers = ghrepo.get_starrers_user_info()
-	ghrepo.export_to_csv(starrers, filename='starrers.csv')
 	watchers = ghrepo.get_watchers_user_info()
-	ghrepo.export_to_csv(watchers, filename='watchers.csv')
 	forkers = ghrepo.get_forkers_user_info()
-	ghrepo.export_to_csv(forkers, filename='forkers.csv')
+
+	df_starrers = pd.DataFrame(starrers)
+	df_watchers = pd.DataFrame(watchers)
+	df_forkers = pd.DataFrame(forkers)
+
+	df_users = pd.concat([df_starrers, df_watchers, df_forkers])
+
+	df_email_users = df_users[~df_users['email'].isna()]
+	df_noemail_users = df_users[df_users['email'].isna()]
+
+	df_email_users.to_csv('users-emails.csv', index=False)
+	df_noemail_users.to_csv('users-noemails.csv', index=False)
 
