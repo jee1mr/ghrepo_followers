@@ -1,3 +1,4 @@
 PyGithub==1.43.5
 requests==2.21.0
 requests-cache==0.5.0
+pandas==0.24.2
