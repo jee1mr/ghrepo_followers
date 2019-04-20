@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from github import Github
+from github import Github, GithubException
 import pandas as pd
 import requests
+import requests_cache
 import csv
 import sys
+import time
 
 class GithubRepo():
 	"""
@@ -24,11 +26,17 @@ class GithubRepo():
 		ghrepo.export_to_csv(forkers, filename='forkers.csv')
 	"""
 	def __init__(self, url, access_token=None):
+		requests_cache.install_cache('github_cache')
 		self.url = url
 		self.repo = None
 		self.access_token = access_token
 		self.g = Github(access_token)
-		self.repo = self.g.get_repo(self.__parse_repo_name_from_url(self.url))
+		try:
+			self.repo = self.g.get_repo(self.__parse_repo_name_from_url(self.url))
+		except GithubException as e:
+			print('API rate limit exceeded')
+			print('Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)') 
+			sys.exit(1)
 
 	def get_starrers_user_info(self):
 		""" 
@@ -145,17 +153,30 @@ class GithubRepo():
 		"""
 		print('Fetching details for username: ', username)
 		user = {}
-		gh_user = self.g.get_user(username)
+		try:
+			gh_user = self.g.get_user(username)
+		except GithubException as e:
+			print('API rate limit exceeded')
+			print('Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)') 
+
 		user = {'username': gh_user.login, 'name': gh_user.name, 'email': gh_user.email,
 				'website': gh_user.blog, 'organization': gh_user.company, 'location': gh_user.location}
 		return user
+
+	def __time_remaining(self, epoch):
+		current_epoch = time.time()
+		if epoch > current_epoch:
+			return int((epoch - time.time()) / 60)
+		return 0
 
 
 if __name__ == '__main__':
 	if len(sys.argv) < 2:
 		print('Usage:  python ghrepo_followers.py https://github.com/<username>/<repo_name>/ <access_token>')
 		sys.exit(1)
-	ghrepo = GithubRepo(sys.argv[1], sys.argv[2])
+	access_token = sys.argv[2] if len(sys.argv) > 2 else None
+	ghrepo = GithubRepo(sys.argv[1], access_token)
+	
 	starrers = ghrepo.get_starrers_user_info()
 	watchers = ghrepo.get_watchers_user_info()
 	forkers = ghrepo.get_forkers_user_info()
