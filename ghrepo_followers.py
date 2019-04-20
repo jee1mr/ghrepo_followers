@@ -153,14 +153,22 @@ class GithubRepo():
 		"""
 		print('Fetching details for username: ', username)
 		user = {}
-		try:
-			gh_user = self.g.get_user(username)
-		except GithubException as e:
-			print('API rate limit exceeded')
-			print('Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)') 
+		retry_limit = 3
+		while retry_limit:
+			try:
+				gh_user = self.g.get_user(username)
+				user = {'username': gh_user.login, 'name': gh_user.name, 'email': gh_user.email,
+						'website': gh_user.blog, 'organization': gh_user.company, 'location': gh_user.location}
+				break
+			except GithubException as e:
+				print('API rate limit exceeded')
+				print('Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)')
+				break
+			except Exception as e:
+				print('Fetching user info failed', e)
+				print('Retrying..')
+			retry_limit -= 1
 
-		user = {'username': gh_user.login, 'name': gh_user.name, 'email': gh_user.email,
-				'website': gh_user.blog, 'organization': gh_user.company, 'location': gh_user.location}
 		return user
 
 	def __time_remaining(self, epoch):
