@@ -7,6 +7,7 @@ import requests_cache
 import csv
 import sys
 import time
+import click
 
 class GithubRepo():
 	"""
@@ -34,44 +35,17 @@ class GithubRepo():
 		try:
 			self.repo = self.g.get_repo(self.__parse_repo_name_from_url(self.url))
 		except GithubException as e:
-			print('API rate limit exceeded')
-			print('Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)') 
-			sys.exit(1)
+			raise Exception('API rate limit exceeded. Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)') 
 
-	def get_starrers_user_info(self):
-		""" 
-		Get user info for all the starrers
+	def get_all_users_info(self):
 		"""
-		starrers = self.__get_starrers()
-		return list(map(lambda user: self.__get_user_info(user), starrers))
-
-	def get_watchers_user_info(self):
-		""" 
-		Get user info for all the watchers
+		Get user info for all starrers, watchers, forkers
 		"""
-		watchers = self.__get_watchers()
-		return list(map(lambda user: self.__get_user_info(user), watchers))
+		starrers = list(map(lambda user: self.__get_user_info(user), self.__get_starrers()))
+		watchers = list(map(lambda user: self.__get_user_info(user), self.__get_watchers()))
+		forkers = list(map(lambda user: self.__get_user_info(user), self.__get_forkers()))
 
-	def get_forkers_user_info(self):
-		""" 
-		Get user info for all the forkers
-		"""
-		forkers = self.__get_forkers()
-		return list(map(lambda user: self.__get_user_info(user), forkers))
-
-	def export_to_csv(self, users, filename='repo_followers.csv'):
-		""" 
-		Export user info data to CSV format
-		"""
-		if not len(users):
-			return
-
-		with open(filename, 'w+') as f:
-			writer = csv.writer(f)
-			writer.writerows([users[0].keys()])
-			for user in users:
-				user_row =[user[field] for field in user]
-				writer.writerows([user_row])
+		return starrers + watchers + forkers
 
 	def __parse_repo_name_from_url(self, url):
 		""" 
@@ -113,7 +87,7 @@ class GithubRepo():
 		while len(users) < forks_count:
 			r = requests.get(self.repo.forks_url, params={'page': page, 'access_token': self.access_token})
 			if r.status_code != 200:
-				raise('Github API Failed. Please check for rate limits.')
+				raise Exception('Github API Failed. Please check for rate limits.')
 			res_per_page = r.json()
 			if not res_per_page:
 				break
@@ -134,7 +108,7 @@ class GithubRepo():
 		while len(users) < subscribers_count:
 			r = requests.get(self.repo.subscribers_url, params={'page': page, 'access_token': self.access_token})
 			if r.status_code != 200:
-				raise('Github API Failed. Please check for rate limits.')
+				raise Exception('Github API Failed. Please check for rate limits.')
 			res_per_page = r.json()
 			if not res_per_page:
 				break
@@ -161,9 +135,7 @@ class GithubRepo():
 						'website': gh_user.blog, 'organization': gh_user.company, 'location': gh_user.location}
 				break
 			except GithubException as e:
-				print('API rate limit exceeded')
-				print('Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)')
-				break
+				raise Exception('API rate limit exceeded. Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)')
 			except Exception as e:
 				print('Fetching user info failed', e)
 				print('Retrying..')
@@ -177,23 +149,24 @@ class GithubRepo():
 			return int((epoch - time.time()) / 60)
 		return 0
 
+@click.command()
+@click.option('--repo', help='Github repo link. Single or Multiple.', multiple=True, required=True)
+@click.option('--access_token', default=None, help='Your personal github access token. Find instructions in the README. [optional]')
+def get_all_users(repo, access_token):
+	"""
+		Example: 
+		python ghrepo_followers.py --repo https://github.com/d6t/d6tpipe --repo https://github.com/d6t/d6tflow --access_token ACCESS_TOKEN
+	"""
+	print(repo, access_token)
+	users = []
+	for _repo in repo:
+		try:
+			ghrepo = GithubRepo(_repo, access_token)
+			users += ghrepo.get_all_users_info()
+		except Exception as e:
+			click.echo(click.style(str(e), fg='red'))
 
-if __name__ == '__main__':
-	if len(sys.argv) < 2:
-		print('Usage:  python ghrepo_followers.py https://github.com/<username>/<repo_name>/ <access_token>')
-		sys.exit(1)
-	access_token = sys.argv[2] if len(sys.argv) > 2 else None
-	ghrepo = GithubRepo(sys.argv[1], access_token)
-	
-	starrers = ghrepo.get_starrers_user_info()
-	watchers = ghrepo.get_watchers_user_info()
-	forkers = ghrepo.get_forkers_user_info()
-
-	df_starrers = pd.DataFrame(starrers)
-	df_watchers = pd.DataFrame(watchers)
-	df_forkers = pd.DataFrame(forkers)
-
-	df_users = pd.concat([df_starrers, df_watchers, df_forkers])
+	df_users = pd.DataFrame(users)
 
 	df_email_users = df_users[~df_users['email'].isna()]
 	df_noemail_users = df_users[df_users['email'].isna()]
@@ -201,3 +174,6 @@ if __name__ == '__main__':
 	df_email_users.to_csv('users-emails.csv', index=False)
 	df_noemail_users.to_csv('users-noemails.csv', index=False)
 
+if __name__ == '__main__':
+	get_all_users()
+	
