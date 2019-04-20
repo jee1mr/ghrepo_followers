@@ -3,10 +3,12 @@
 Find all users who starred, forked, watching your repo. Fetch their email, username, location
 and other details into a CSV file.
 
+You can also club multiple repos.
+
 #### Usage:
 
 ```console
-	$ python ghrepo_followers.py https://github.com/<username>/<repo_name>/ <access_token>
+	$ python ghrepo_followers.py --repo https://github.com/<username>/<repo_name>/ --access_token <access_token>
 ```
 	
 If you don't provide an access token, the requests will be made anonymously. But the API
