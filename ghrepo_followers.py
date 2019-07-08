@@ -115,11 +115,12 @@ class GithubRepo():
 		else return empty object
 		"""
 		try:
-			user = self.db.search(Query()['username'] == username)
+			table = self.db.table(self.repo.name)
+			user = table.search(Query()['username'] == username)
 			if len(user):
 				return user[0]
-		except Exception:
-			pass
+		except Exception as e:
+			print('Fetching from tinydb failed', e)
 		return {}
 
 	def __save_user_to_db(self, user):
@@ -127,7 +128,8 @@ class GithubRepo():
 		Save user details to tinydb
 		"""
 		try:
-			self.db.upsert(user, Query()['username'] == user['username'])
+			table = self.db.table(self.repo.name)
+			table.upsert(user, Query()['username'] == user['username'])
 		except Exception as e:
 			print('Saving to tinydb failed', e)
 
