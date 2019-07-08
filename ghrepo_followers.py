@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 from github import Github, GithubException
+from tinydb import TinyDB, Query
 import pandas as pd
 import requests
 import requests_cache
-import csv
 import sys
 import time
 import click
@@ -14,17 +14,8 @@ class GithubRepo():
 	For a given repository, fetch user information of
 	all those who starred, watching, or forked the repository.
 
-	Fetch Username, Name, Email, Website, Organization and Location.
-	Export to CSV.
-
-	Example Usage:
-		ghrepo = GithubRepo('https://github.com/d6t/d6tpipe', 'your_github_access_token')
-		starrers = ghrepo.get_starrers_user_info()
-		ghrepo.export_to_csv(starrers)
-		watchers = ghrepo.get_watchers_user_info()
-		ghrepo.export_to_csv(watchers, filename='watchers.csv')
-		forkers = ghrepo.get_forkers_user_info()
-		ghrepo.export_to_csv(forkers, filename='forkers.csv')
+	Fetch Username, Name, Email, Website, Organization and Location
+	and export to CSV.
 	"""
 	def __init__(self, url, access_token=None):
 		requests_cache.install_cache('github_cache')
@@ -32,6 +23,7 @@ class GithubRepo():
 		self.repo = None
 		self.access_token = access_token
 		self.g = Github(access_token)
+		self.db = TinyDB('./db.json')
 		try:
 			self.repo = self.g.get_repo(self.__parse_repo_name_from_url(self.url))
 		except GithubException as e:
@@ -66,7 +58,7 @@ class GithubRepo():
 		while len(users) < stargazers_count:
 			r = requests.get(self.repo.stargazers_url, params={'page': page, 'access_token': self.access_token})
 			if r.status_code != 200:
-				raise('Github API Failed. Please check for rate limits.')
+				raise Exception('Github API Failed. Please check for rate limits.')
 			res_per_page = r.json()
 			if not res_per_page:
 				break
@@ -117,6 +109,28 @@ class GithubRepo():
 			page += 1
 		return users
 
+	def __get_user_from_db(self, username):
+		"""
+		Fetch user details from tinydb if already exists,
+		else return empty object
+		"""
+		try:
+			user = self.db.search(Query()['username'] == username)
+			if len(user):
+				return user[0]
+		except Exception:
+			pass
+		return {}
+
+	def __save_user_to_db(self, user):
+		"""
+		Save user details to tinydb
+		"""
+		try:
+			self.db.upsert(user, Query()['username'] == user['username'])
+		except Exception as e:
+			print('Saving to tinydb failed', e)
+
 	def __get_user_info(self, username):
 		"""
 		Get user info for a given github username.
@@ -126,13 +140,16 @@ class GithubRepo():
 		    to be extracted.
 		"""
 		print('Fetching details for username: ', username)
-		user = {}
 		retry_limit = 3
 		while retry_limit:
 			try:
-				gh_user = self.g.get_user(username)
+				user = self.__get_user_from_db(username)
+				if user:
+					break
+				gh_user =  self.g.get_user(username)
 				user = {'username': gh_user.login, 'name': gh_user.name, 'email': gh_user.email,
 						'website': gh_user.blog, 'organization': gh_user.company, 'location': gh_user.location}
+				self.__save_user_to_db(user)
 				break
 			except GithubException as e:
 				raise Exception('API rate limit exceeded. Please try again after ', self.__time_remaining(self.g.rate_limiting_resettime), 'minute(s)')
@@ -157,7 +174,6 @@ def get_all_users(repo, access_token):
 		Example: 
 		python ghrepo_followers.py --repo https://github.com/d6t/d6tpipe --repo https://github.com/d6t/d6tflow --access_token ACCESS_TOKEN
 	"""
-	print(repo, access_token)
 	users = []
 	for _repo in repo:
 		try:
@@ -165,6 +181,7 @@ def get_all_users(repo, access_token):
 			users += ghrepo.get_all_users_info()
 		except Exception as e:
 			click.echo(click.style(str(e), fg='red'))
+			sys.exit(1)
 
 	df_users = pd.DataFrame(users)
 
