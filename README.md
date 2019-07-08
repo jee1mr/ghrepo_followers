@@ -10,6 +10,12 @@ You can also club multiple repos.
 ```console
 	$ python ghrepo_followers.py --repo https://github.com/<username>/<repo_name>/ --access_token <access_token>
 ```
+
+For multiple repos:
+
+```console
+	$ python ghrepo_followers.py --repo https://github.com/<username>/<repo_name>/  --repo https://github.com/<username>/<repo_name>/ --access_token <access_token>
+```
 	
 If you don't provide an access token, the requests will be made anonymously. But the API
 rate limit would be 60 per hour. Whereas, for authenticated requests, the limit is 5000/hr.
